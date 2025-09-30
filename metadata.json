@@ -1,0 +1,5 @@
+{
+  "name": "TripGenius",
+  "description": "An AI-powered travel planner that generates a personalized itinerary based on your destination and trip duration. Discover the best attractions and places to visit with recommendations from AI.",
+  "requestFramePermissions": []
+}
