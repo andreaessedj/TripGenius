@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { ItineraryPlan, LocalExperiences, DestinationEntry } from './types';
-import { generateItinerary, generateLocalExperiences } from './services/geminiService';
+import { ItineraryPlan, LocalExperiences, DestinationEntry, PackingList } from './types';
+import { generateItinerary, generateLocalExperiences, generatePackingList, generateDestinationImage } from './services/geminiService';
 import Header from './components/Header';
 import ItineraryCard from './components/ItineraryCard';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -10,6 +10,7 @@ import Footer from './components/Footer';
 import Welcome from './components/Welcome';
 import LocalExperiencesComponent from './components/LocalExperiences';
 import HotelSearch from './components/HotelSearch';
+import PackingListComponent from './components/PackingListComponent';
 
 
 interface ItineraryResult {
@@ -17,24 +18,46 @@ interface ItineraryResult {
   plan: ItineraryPlan;
 }
 
+const ALL_INTERESTS = ['Arte e Cultura', 'Cibo e Vino', 'Avventura all\'aperto', 'Storia', 'Shopping', 'Vita Notturna', 'Rilassamento', 'Natura e Paesaggi'];
+
 const App: React.FC = () => {
   const [destinations, setDestinations] = useState<DestinationEntry[]>([{ id: 1, name: '', days: '3' }]);
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [intensity, setIntensity] = useState<'leggero' | 'medio' | 'intenso'>('medio');
+  const [budget, setBudget] = useState<'economico' | 'medio' | 'lusso'>('medio');
+  const [interests, setInterests] = useState<string[]>([]);
+  
   const [itineraries, setItineraries] = useState<ItineraryResult[] | null>(null);
   const [localExperiences, setLocalExperiences] = useState<LocalExperiences | null>(null);
+  const [packingList, setPackingList] = useState<PackingList | null>(null);
+  
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLoadingExperiences, setIsLoadingExperiences] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [headerImageUrl, setHeaderImageUrl] = useState<string | null>(null);
   
+  const debounceTimeoutRef = useRef<number | null>(null);
   const firstDestination = useMemo(() => destinations[0], [destinations]);
 
   const handleDestinationChange = (index: number, field: keyof Omit<DestinationEntry, 'id'>, value: string) => {
     const newDestinations = [...destinations];
     newDestinations[index] = { ...newDestinations[index], [field]: value };
     setDestinations(newDestinations);
+
+    if (index === 0 && field === 'name') {
+        if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+        }
+        debounceTimeoutRef.current = window.setTimeout(() => {
+            if (value.trim().length > 3) { // Only generate if the name is somewhat substantial
+                generateDestinationImage(value)
+                    .then(imageUrl => setHeaderImageUrl(imageUrl))
+                    .catch(err => console.error("Failed to generate destination image:", err));
+            }
+        }, 800); // Debounce for 800ms
+    }
   };
 
   const addDestination = () => {
@@ -43,6 +66,14 @@ const App: React.FC = () => {
 
   const removeDestination = (id: number) => {
     setDestinations(destinations.filter(d => d.id !== id));
+  };
+
+  const handleInterestToggle = (interest: string) => {
+    setInterests(prev => 
+        prev.includes(interest) 
+            ? prev.filter(i => i !== interest)
+            : [...prev, interest]
+    );
   };
 
   const handleSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
@@ -56,35 +87,35 @@ const App: React.FC = () => {
     setError(null);
     setItineraries(null);
     setLocalExperiences(null);
+    setPackingList(null);
 
-    // Helper function to pause execution and avoid hitting API rate limits.
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
       const allItineraries: ItineraryResult[] = [];
+      let fullGeneratedPlan: ItineraryPlan = [];
       for (const dest of destinations) {
         const numDays = parseInt(dest.days, 10);
-        const generatedPlan = await generateItinerary(dest.name, numDays, intensity);
+        const generatedPlan = await generateItinerary(dest.name, numDays, intensity, budget, interests);
         allItineraries.push({ destinationName: dest.name, plan: generatedPlan });
-        // Pause after each major API call to stay within the free tier's rate limits.
+        fullGeneratedPlan = [...fullGeneratedPlan, ...generatedPlan];
         await sleep(1200);
       }
       setItineraries(allItineraries);
       
       if(firstDestination?.name) {
-          setIsLoadingExperiences(true);
+          setIsLoadingExperiences(true); // Re-use this state for all secondary calls
           try {
-            const experiences = await generateLocalExperiences(firstDestination.name);
+            const totalDays = destinations.reduce((acc, curr) => acc + parseInt(curr.days, 10), 0);
+            const [experiences, generatedPackingList] = await Promise.all([
+                generateLocalExperiences(firstDestination.name),
+                generatePackingList(firstDestination.name, totalDays, fullGeneratedPlan)
+            ]);
             setLocalExperiences(experiences);
+            setPackingList(generatedPackingList);
           } catch (err) {
-            console.error("Impossibile caricare le esperienze locali:", err);
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            // Provide a user-friendly error message for rate-limiting.
-            if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-                setError("Il servizio è momentaneamente sovraccarico. Riprova tra qualche istante.");
-            } else {
-                setError("Non è stato possibile caricare i suggerimenti per le esperienze locali.");
-            }
+            console.error("Impossibile caricare le esperienze locali o la lista bagaglio:", err);
+            setError("Non è stato possibile caricare alcuni suggerimenti aggiuntivi.");
           } finally {
             setIsLoadingExperiences(false);
           }
@@ -93,7 +124,6 @@ const App: React.FC = () => {
     } catch (err) {
         console.error("Errore durante la generazione dell'itinerario:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
-        // Provide a user-friendly error message for rate-limiting.
         if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
             setError("Il servizio è momentaneamente sovraccarico. Riprova tra qualche istante.");
         } else {
@@ -102,7 +132,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [destinations, intensity, firstDestination]);
+  }, [destinations, intensity, budget, interests, firstDestination]);
   
 
   const handleDownloadPdf = async () => {
@@ -119,7 +149,6 @@ const App: React.FC = () => {
 
         const imgData = canvas.toDataURL('image/png');
         
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pdf = new (jsPDF as any)({
             orientation: 'p',
             unit: 'mm',
@@ -183,15 +212,11 @@ const handleShare = async () => {
       const duration = parseInt(firstDestination.days, 10);
       if (isNaN(duration) || duration <= 0) return '';
       
-      // Use UTC to prevent timezone-related off-by-one errors.
-      // This creates a date object based on the input string at UTC midnight.
       const parts = startDate.split('-').map(p => parseInt(p, 10));
       const checkInDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
       
-      // Add the duration in days, still in UTC.
       checkInDate.setUTCDate(checkInDate.getUTCDate() + duration);
       
-      // Format the result back to a YYYY-MM-DD string.
       return checkInDate.toISOString().split('T')[0];
     } catch (e) {
       console.error("Error calculating checkout date:", e);
@@ -202,11 +227,11 @@ const handleShare = async () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans">
-      <Header />
+      <Header imageUrl={headerImageUrl} />
       <main className="flex-grow container mx-auto px-4 py-8">
         <section className="bg-white dark:bg-gray-800 shadow-2xl rounded-2xl p-8 max-w-3xl mx-auto -mt-20 z-10 relative border border-gray-200 dark:border-gray-700">
           <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-2">Pianifica la Tua Prossima Avventura</h2>
-          <p className="text-center text-gray-600 dark:text-gray-400 mb-8">Dicci dove stai andando, per quanto tempo, e creeremo il viaggio perfetto per te.</p>
+          <p className="text-center text-gray-600 dark:text-gray-400 mb-8">Personalizza ogni dettaglio e lascia che l'IA crei il viaggio perfetto per te.</p>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
                 {destinations.map((dest, index) => (
@@ -239,9 +264,26 @@ const handleShare = async () => {
                 </button>
             </div>
 
-            <div>
-              <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Data di Inizio Viaggio</label>
-              <input id="start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required className="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"/>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Data di Inizio</label>
+                  <input id="start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required className="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"/>
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Budget di Viaggio</label>
+                     <div className="grid grid-cols-3 gap-2">
+                        {(['economico', 'medio', 'lusso'] as const).map((level) => {
+                            const icons = { economico: 'fa-seedling', medio: 'fa-euro-sign', lusso: 'fa-gem' };
+                            const labels = { economico: 'Eco', medio: 'Medio', lusso: 'Lusso' };
+                            return (
+                                <button type="button" key={level} onClick={() => setBudget(level)} className={`p-2 rounded-lg border-2 text-center transition-all duration-200 flex items-center justify-center gap-2 ${ budget === level ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/50' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:border-indigo-400' }`}>
+                                    <i className={`fa-solid ${icons[level]} text-md ${budget === level ? 'text-indigo-500' : 'text-gray-500'}`}></i>
+                                    <span className={`font-semibold text-sm ${budget === level ? 'text-indigo-600 dark:text-indigo-300' : 'text-gray-700 dark:text-gray-300'}`}>{labels[level]}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
             <div>
@@ -259,6 +301,18 @@ const handleShare = async () => {
                   })}
               </div>
             </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">I Tuoi Interessi</label>
+              <div className="flex flex-wrap gap-2">
+                {ALL_INTERESTS.map(interest => (
+                    <button type="button" key={interest} onClick={() => handleInterestToggle(interest)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-full transition ${ interests.includes(interest) ? 'bg-indigo-600 text-white ring-2 ring-offset-2 ring-indigo-500 ring-offset-white dark:ring-offset-gray-800' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'}`}>
+                        {interest}
+                    </button>
+                ))}
+              </div>
+            </div>
 
             <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed transition-transform transform hover:scale-105 flex items-center justify-center gap-2">
               <i className="fa-solid fa-wand-magic-sparkles"></i>
@@ -272,7 +326,7 @@ const handleShare = async () => {
           {error && <div className="text-center bg-red-100 dark:bg-red-900/50 border border-red-400 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg" role="alert">{error}</div>}
           {!isLoading && !error && !itineraries && <Welcome />}
           {itineraries && (
-            <div>
+            <div className="animate-fade-in">
               <div className="text-center mb-8">
                   <h2 className="text-4xl font-extrabold text-gray-900 dark:text-white">Il Tuo Viaggio Personalizzato</h2>
                   <div className="mt-4 flex flex-wrap justify-center items-center gap-4">
@@ -303,7 +357,8 @@ const handleShare = async () => {
             </div>
           )}
 
-          {/* GetYourGuide Widget */}
+          {packingList && <PackingListComponent packingList={packingList} />}
+
           {itineraries && !isLoading && firstDestination?.name && (
             <section className="mt-12">
               <div className="text-center mb-8">
@@ -331,7 +386,7 @@ const handleShare = async () => {
           {isLoadingExperiences && (
             <div className="text-center mt-8 flex items-center justify-center gap-2">
                 <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-600 dark:text-gray-400">Sto cercando esperienze uniche...</p>
+                <p className="text-gray-600 dark:text-gray-400">Sto cercando esperienze uniche e consigli...</p>
             </div>
           )}
 

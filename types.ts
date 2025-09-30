@@ -33,6 +33,7 @@ export interface DayPlan {
   day: number;
   title: string;
   activities: Activity[];
+  weatherAdvice?: string;
 }
 
 /**
@@ -50,3 +51,17 @@ export interface LocalExperience {
 }
 
 export type LocalExperiences = LocalExperience[];
+
+
+/**
+ * Represents a single item to pack.
+ */
+export interface PackingItem {
+    item: string;
+    notes?: string;
+}
+
+/**
+ * Represents the packing list, categorized.
+ */
+export type PackingList = Record<string, PackingItem[]>;

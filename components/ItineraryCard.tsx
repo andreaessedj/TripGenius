@@ -10,26 +10,31 @@ interface ItineraryCardProps {
 const ItineraryCard: React.FC<ItineraryCardProps> = ({ dayPlan }) => {
   const [isMapVisible, setIsMapVisible] = useState(false);
   
-  // Memoize the check for locations to avoid recalculating on every render
   const hasMapData = useMemo(() => {
     return dayPlan.activities.filter(a => typeof a.latitude === 'number' && typeof a.longitude === 'number').length > 1;
   }, [dayPlan.activities]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700 transition-shadow hover:shadow-2xl">
-      <div className="p-6 bg-gray-50 dark:bg-gray-700/50 flex items-center gap-4">
-        <div className="flex-shrink-0 bg-indigo-500 text-white w-16 h-16 rounded-full flex flex-col items-center justify-center shadow-md">
-            <span className="text-xs font-semibold tracking-wider">GIORNO</span>
-            <span className="text-3xl font-bold">{dayPlan.day}</span>
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+      <div className="p-6 bg-gray-50 dark:bg-gray-700/50 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div className="flex-shrink-0 bg-indigo-500 text-white w-20 h-20 rounded-xl flex flex-col items-center justify-center shadow-md">
+            <span className="text-sm font-semibold tracking-wider">GIORNO</span>
+            <span className="text-4xl font-bold">{dayPlan.day}</span>
         </div>
-        <div>
+        <div className="flex-grow">
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{dayPlan.title}</h3>
+            {dayPlan.weatherAdvice && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-indigo-800 dark:text-indigo-200 bg-indigo-100 dark:bg-indigo-900/50 p-2 rounded-lg">
+                    <i className="fa-solid fa-cloud-sun-rain"></i>
+                    <p>{dayPlan.weatherAdvice}</p>
+                </div>
+            )}
         </div>
       </div>
       <div className="p-6">
-        <div className="space-y-4">
+        <div className="relative border-l-2 border-indigo-200 dark:border-indigo-700 ml-4 sm:ml-6">
             {dayPlan.activities.map((activity, index) => (
-            <AttractionCard key={index} activity={activity} />
+              <AttractionCard key={index} activity={activity} />
             ))}
         </div>
         
@@ -46,7 +51,9 @@ const ItineraryCard: React.FC<ItineraryCardProps> = ({ dayPlan }) => {
         )}
 
         {isMapVisible && hasMapData && (
-          <WalkingMap activities={dayPlan.activities} />
+          <div className="mt-4 animate-fade-in">
+            <WalkingMap activities={dayPlan.activities} />
+          </div>
         )}
       </div>
     </div>

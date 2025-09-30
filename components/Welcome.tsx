@@ -8,7 +8,7 @@ const Welcome: React.FC = () => {
       </div>
       <h2 className="text-2xl font-semibold text-gray-800 dark:text-white mb-2">Pronto per un'Avventura?</h2>
       <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
-        Compila il modulo qui sopra per ottenere un piano di viaggio su misura. Lascia che la nostra AI sia il tuo pianificatore di viaggio personale e scopri le gemme nascoste della tua prossima vacanza.
+        Compila il modulo qui sopra, scegli i tuoi interessi e il budget, e ottieni un piano di viaggio su misura. Lascia che la nostra AI sia il tuo pianificatore personale e scopri le gemme nascoste della tua prossima vacanza.
       </p>
     </div>
   );
