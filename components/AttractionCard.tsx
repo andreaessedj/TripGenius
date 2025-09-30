@@ -3,44 +3,24 @@ import { Activity } from '../types';
 
 interface AttractionCardProps {
   activity: Activity;
+  onOptionsClick: () => void;
 }
 
-const CategoryIcon: React.FC<{ category: Activity['category'] }> = ({ category }) => {
-    const iconMapping = {
-      'Attrazione Storica': 'fa-landmark',
-      'Museo': 'fa-building-columns',
-      'Parco': 'fa-tree',
-      'Ristorante': 'fa-utensils',
-      'Shopping': 'fa-bag-shopping',
-      'Punto Panoramico': 'fa-camera-retro',
-      'Altro': 'fa-location-dot'
-    };
-    const colorMapping = {
-        'Attrazione Storica': 'text-amber-600',
-        'Museo': 'text-purple-600',
-        'Parco': 'text-green-600',
-        'Ristorante': 'text-orange-600',
-        'Shopping': 'text-pink-600',
-        'Punto Panoramico': 'text-sky-600',
-        'Altro': 'text-gray-600'
-    };
-    const iconClass = category ? iconMapping[category] : 'fa-location-dot';
-    const colorClass = category ? colorMapping[category] : 'text-gray-600';
-
-    return <i className={`fa-solid ${iconClass} ${colorClass}`} title={category}></i>;
-};
-
-
-const AttractionCard: React.FC<AttractionCardProps> = ({ activity }) => {
+const AttractionCard: React.FC<AttractionCardProps> = ({ activity, onOptionsClick }) => {
     return (
-      <div className="relative mb-10 pl-10">
-        {/* Timeline Dot */}
-        <div className="absolute -left-[calc(0.75rem+1px)] top-0 w-6 h-6 bg-white dark:bg-gray-800 flex items-center justify-center rounded-full ring-4 ring-indigo-500">
-            <CategoryIcon category={activity.category} />
-        </div>
-        
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-4">
-            <h4 className="font-bold text-lg text-gray-800 dark:text-gray-100 flex-grow">{activity.name}</h4>
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-4 relative">
+            <div className="flex justify-between items-start gap-2">
+                <h4 className="font-bold text-lg text-gray-800 dark:text-gray-100 flex-grow pr-8">{activity.name}</h4>
+                <button 
+                    onClick={onOptionsClick}
+                    className="absolute top-2 right-2 p-2 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full h-8 w-8 flex items-center justify-center transition"
+                    aria-label="Opzioni attività"
+                    title="Modifica o rimuovi attività"
+                >
+                    <i className="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+            </div>
+
 
             {activity.startTime && (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 my-2">
@@ -57,7 +37,12 @@ const AttractionCard: React.FC<AttractionCardProps> = ({ activity }) => {
               </div>
             )}
   
-            <p className="text-gray-600 dark:text-gray-400 flex-grow mb-4 min-h-[40px]">{activity.description}</p>
+            <p className="text-gray-600 dark:text-gray-400 flex-grow mb-3 min-h-[40px]">{activity.description}</p>
+
+            <div className="text-sm text-gray-500 dark:text-gray-400 flex items-start gap-2 mb-4">
+                <i className="fa-solid fa-location-dot mt-1"></i>
+                <span>{activity.address}</span>
+            </div>
             
             <div className="pt-3 border-t border-gray-200 dark:border-gray-600 flex flex-wrap items-center justify-between gap-4">
               {activity.estimatedCost ? (
@@ -79,7 +64,6 @@ const AttractionCard: React.FC<AttractionCardProps> = ({ activity }) => {
               )}
             </div>
          </div>
-      </div>
     );
   };
   

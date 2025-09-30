@@ -14,9 +14,12 @@ export interface DestinationEntry {
  * Represents a single activity within a day's plan.
  */
 export interface Activity {
+  id: string; // Unique identifier for state management
+  status: 'active' | 'removed'; // To handle user removal of activities
   timeOfDay: 'Mattina' | 'Pomeriggio' | 'Sera';
   name: string;
   description: string;
+  address: string; // Full address of the location
   latitude?: number;
   longitude?: number;
   estimatedCost?: string;
@@ -24,6 +27,10 @@ export interface Activity {
   category?: 'Attrazione Storica' | 'Museo' | 'Parco' | 'Ristorante' | 'Shopping' | 'Punto Panoramico' | 'Altro';
   estimatedVisitDuration?: string;
   startTime?: string;
+  travelToNext?: { // Info for travel to the NEXT activity
+    distance: string;
+    duration: string;
+  };
 }
 
 /**

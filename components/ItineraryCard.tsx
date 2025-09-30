@@ -1,18 +1,37 @@
 import React, { useMemo, useState } from 'react';
-import { DayPlan } from '../types';
+import { DayPlan, Activity } from '../types';
 import AttractionCard from './AttractionCard';
 import WalkingMap from './WalkingMap';
 
 interface ItineraryCardProps {
   dayPlan: DayPlan;
+  onActivityOptionsClick: (activity: Activity) => void;
 }
 
-const ItineraryCard: React.FC<ItineraryCardProps> = ({ dayPlan }) => {
+const CategoryIcon: React.FC<{ category: Activity['category'] }> = ({ category }) => {
+    const iconMapping = {
+      'Attrazione Storica': 'fa-landmark', 'Museo': 'fa-building-columns',
+      'Parco': 'fa-tree', 'Ristorante': 'fa-utensils', 'Shopping': 'fa-bag-shopping',
+      'Punto Panoramico': 'fa-camera-retro', 'Altro': 'fa-location-dot'
+    };
+    const colorMapping = {
+        'Attrazione Storica': 'text-amber-600', 'Museo': 'text-purple-600', 'Parco': 'text-green-600',
+        'Ristorante': 'text-orange-600', 'Shopping': 'text-pink-600', 'Punto Panoramico': 'text-sky-600',
+        'Altro': 'text-gray-600'
+    };
+    const iconClass = category ? iconMapping[category] : 'fa-location-dot';
+    const colorClass = category ? colorMapping[category] : 'text-gray-600';
+    return <i className={`fa-solid ${iconClass} ${colorClass}`} title={category}></i>;
+};
+
+const ItineraryCard: React.FC<ItineraryCardProps> = ({ dayPlan, onActivityOptionsClick }) => {
   const [isMapVisible, setIsMapVisible] = useState(false);
   
+  const activeActivities = useMemo(() => dayPlan.activities.filter(a => a.status === 'active'), [dayPlan.activities]);
+  
   const hasMapData = useMemo(() => {
-    return dayPlan.activities.filter(a => typeof a.latitude === 'number' && typeof a.longitude === 'number').length > 1;
-  }, [dayPlan.activities]);
+    return activeActivities.filter(a => typeof a.latitude === 'number' && typeof a.longitude === 'number').length > 1;
+  }, [activeActivities]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700">
@@ -33,8 +52,29 @@ const ItineraryCard: React.FC<ItineraryCardProps> = ({ dayPlan }) => {
       </div>
       <div className="p-6">
         <div className="relative border-l-2 border-indigo-200 dark:border-indigo-700 ml-4 sm:ml-6">
-            {dayPlan.activities.map((activity, index) => (
-              <AttractionCard key={index} activity={activity} />
+            {activeActivities.map((activity, index) => (
+              <div key={activity.id} className="relative mb-8 pl-10">
+                {/* Timeline Dot */}
+                <div className="absolute -left-[calc(0.75rem+1px)] top-0 w-6 h-6 bg-white dark:bg-gray-800 flex items-center justify-center rounded-full ring-4 ring-indigo-500">
+                    <CategoryIcon category={activity.category} />
+                </div>
+                
+                {/* Travel Info on Timeline */}
+                {index < activeActivities.length - 1 && activity.travelToNext && (
+                    <div className="absolute top-8 -left-[22px] w-12 h-24 flex justify-center" aria-hidden="true">
+                       <div className="text-center text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 p-1 rounded-md shadow">
+                           <i className="fa-solid fa-person-walking"></i>
+                           <div className="font-semibold">{activity.travelToNext.duration}</div>
+                           <div className="text-[10px]">({activity.travelToNext.distance})</div>
+                       </div>
+                    </div>
+                )}
+
+                <AttractionCard 
+                  activity={activity} 
+                  onOptionsClick={() => onActivityOptionsClick(activity)}
+                />
+              </div>
             ))}
         </div>
         
@@ -52,7 +92,7 @@ const ItineraryCard: React.FC<ItineraryCardProps> = ({ dayPlan }) => {
 
         {isMapVisible && hasMapData && (
           <div className="mt-4 animate-fade-in">
-            <WalkingMap activities={dayPlan.activities} />
+            <WalkingMap activities={activeActivities} />
           </div>
         )}
       </div>

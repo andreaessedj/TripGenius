@@ -28,9 +28,9 @@ const WalkingMap: React.FC<WalkingMapProps> = ({ activities }) => {
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
-  // Memoize locations with valid coordinates
+  // Memoize locations with valid coordinates from ACTIVE activities
   const locations = useMemo(() => 
-    activities.filter(a => typeof a.latitude === 'number' && typeof a.longitude === 'number'),
+    activities.filter(a => a.status === 'active' && typeof a.latitude === 'number' && typeof a.longitude === 'number'),
     [activities]
   );
   
@@ -132,9 +132,6 @@ const WalkingMap: React.FC<WalkingMapProps> = ({ activities }) => {
     if (filteredLocations.length > 1) {
       const waypoints = filteredLocations.map(loc => L.latLng(loc.latitude!, loc.longitude!));
       
-      // Optimization Note: Re-creating the control on each update is the most reliable approach here.
-      // It ensures the `createMarker` function gets a fresh closure over the correct `filteredLocations`
-      // array, which is necessary for popups to have the correct location names.
       const routingControl = L.Routing.control({
         waypoints: waypoints,
         routeWhileDragging: false,

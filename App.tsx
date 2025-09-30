@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { ItineraryPlan, LocalExperiences, DestinationEntry, PackingList } from './types';
-import { generateItinerary, generateLocalExperiences, generatePackingList, generateDestinationImage } from './services/geminiService';
+import { ItineraryPlan, LocalExperiences, DestinationEntry, PackingList, DayPlan, Activity } from './types';
+import { generateItinerary, generateLocalExperiences, generatePackingList, generateDestinationImage, generateAlternativeActivities } from './services/geminiService';
 import Header from './components/Header';
 import ItineraryCard from './components/ItineraryCard';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -11,11 +11,18 @@ import Welcome from './components/Welcome';
 import LocalExperiencesComponent from './components/LocalExperiences';
 import HotelSearch from './components/HotelSearch';
 import PackingListComponent from './components/PackingListComponent';
+import ReplacementModal from './components/ReplacementModal';
 
 
 interface ItineraryResult {
   destinationName: string;
   plan: ItineraryPlan;
+}
+
+interface ReplacementState {
+  itineraryIndex: number;
+  dayIndex: number;
+  activity: Activity;
 }
 
 const ALL_INTERESTS = ['Arte e Cultura', 'Cibo e Vino', 'Avventura all\'aperto', 'Storia', 'Shopping', 'Vita Notturna', 'Rilassamento', 'Natura e Paesaggi'];
@@ -38,6 +45,10 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [headerImageUrl, setHeaderImageUrl] = useState<string | null>(null);
   
+  const [replacementState, setReplacementState] = useState<ReplacementState | null>(null);
+  const [alternativeSuggestions, setAlternativeSuggestions] = useState<Activity[]>([]);
+  const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
+
   const debounceTimeoutRef = useRef<number | null>(null);
   const firstDestination = useMemo(() => destinations[0], [destinations]);
 
@@ -51,12 +62,12 @@ const App: React.FC = () => {
             clearTimeout(debounceTimeoutRef.current);
         }
         debounceTimeoutRef.current = window.setTimeout(() => {
-            if (value.trim().length > 3) { // Only generate if the name is somewhat substantial
+            if (value.trim().length > 3) {
                 generateDestinationImage(value)
                     .then(imageUrl => setHeaderImageUrl(imageUrl))
                     .catch(err => console.error("Failed to generate destination image:", err));
             }
-        }, 800); // Debounce for 800ms
+        }, 800);
     }
   };
 
@@ -104,7 +115,7 @@ const App: React.FC = () => {
       setItineraries(allItineraries);
       
       if(firstDestination?.name) {
-          setIsLoadingExperiences(true); // Re-use this state for all secondary calls
+          setIsLoadingExperiences(true);
           try {
             const totalDays = destinations.reduce((acc, curr) => acc + parseInt(curr.days, 10), 0);
             const [experiences, generatedPackingList] = await Promise.all([
@@ -133,7 +144,6 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   }, [destinations, intensity, budget, interests, firstDestination]);
-  
 
   const handleDownloadPdf = async () => {
     const itineraryElement = document.getElementById('itinerary-content');
@@ -148,13 +158,7 @@ const App: React.FC = () => {
         });
 
         const imgData = canvas.toDataURL('image/png');
-        
-        const pdf = new (jsPDF as any)({
-            orientation: 'p',
-            unit: 'mm',
-            format: 'a4'
-        });
-
+        const pdf = new (jsPDF as any)({ orientation: 'p', unit: 'mm', format: 'a4' });
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const imgProps = pdf.getImageProperties(imgData);
         const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
@@ -162,7 +166,6 @@ const App: React.FC = () => {
         
         let heightLeft = imgHeight;
         let position = 0;
-
         pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
         heightLeft -= pdfHeight;
 
@@ -180,15 +183,16 @@ const App: React.FC = () => {
     } finally {
         setIsDownloadingPdf(false);
     }
-};
+  };
 
-const handleShare = async () => {
+  const handleShare = async () => {
     if (!itineraries) return;
 
     const summary = `Ecco il mio itinerario di viaggio per ${itineraries.map(i => i.destinationName).join(', ')}:\n\n` +
       itineraries.map(({ destinationName: dest, plan }) => {
         const destSummary = `--- ${dest} ---\n` + plan.map(dayPlan => {
             const activitiesSummary = dayPlan.activities
+              .filter(a => a.status === 'active')
               .map(activity => `- ${activity.timeOfDay}: ${activity.name} - ${activity.description}`)
               .join('\n');
             return `Giorno ${dayPlan.day}: ${dayPlan.title}\n${activitiesSummary}`;
@@ -199,12 +203,71 @@ const handleShare = async () => {
     try {
       await navigator.clipboard.writeText(summary);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2500); // Reset after 2.5 seconds
+      setTimeout(() => setIsCopied(false), 2500);
     } catch (err) {
       console.error('Impossibile copiare il testo: ', err);
       setError("Impossibile copiare l'itinerario negli appunti.");
     }
   };
+  
+  const handleOpenReplacementModal = (itineraryIndex: number, dayIndex: number, activity: Activity) => {
+    setReplacementState({ itineraryIndex, dayIndex, activity });
+    setIsLoadingAlternatives(true);
+    generateAlternativeActivities(destinations[itineraryIndex].name, activity, { interests, budget })
+        .then(setAlternativeSuggestions)
+        .catch(err => {
+            console.error("Error fetching alternatives:", err);
+            setError("Impossibile caricare alternative.");
+        })
+        .finally(() => setIsLoadingAlternatives(false));
+  };
+  
+  const handleCloseReplacementModal = () => {
+    setReplacementState(null);
+    setAlternativeSuggestions([]);
+  };
+
+  const updateActivityInState = (activityId: string, updateFn: (activity: Activity) => Activity) => {
+    setItineraries(prev => {
+        if (!prev) return null;
+        return prev.map(itineraryResult => ({
+            ...itineraryResult,
+            plan: itineraryResult.plan.map(day => ({
+                ...day,
+                activities: day.activities.map(act => act.id === activityId ? updateFn(act) : act)
+            }))
+        }));
+    });
+  };
+
+  const replaceActivityInState = (originalActivityId: string, newActivity: Activity) => {
+      setItineraries(prev => {
+        if (!prev) return null;
+        return prev.map(itineraryResult => ({
+            ...itineraryResult,
+            plan: itineraryResult.plan.map(day => {
+                const activityIndex = day.activities.findIndex(a => a.id === originalActivityId);
+                if (activityIndex === -1) return day;
+
+                const newActivities = [...day.activities];
+                newActivities[activityIndex] = newActivity;
+                
+                return { ...day, activities: newActivities };
+            })
+        }));
+      });
+  };
+
+  const handleConfirmRemove = (activityId: string) => {
+    updateActivityInState(activityId, (act) => ({ ...act, status: 'removed' }));
+    handleCloseReplacementModal();
+  };
+
+  const handleConfirmReplace = (originalActivityId: string, newActivity: Activity) => {
+    replaceActivityInState(originalActivityId, newActivity);
+    handleCloseReplacementModal();
+  };
+
 
   const hotelCheckOutDate = useMemo(() => {
     if (!startDate || !firstDestination?.days) return '';
@@ -226,6 +289,7 @@ const handleShare = async () => {
 
 
   return (
+    <>
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans">
       <Header imageUrl={headerImageUrl} />
       <main className="flex-grow container mx-auto px-4 py-8">
@@ -341,14 +405,18 @@ const handleShare = async () => {
                   </div>
               </div>
               <div className="space-y-12" id="itinerary-content">
-                {itineraries.map(({ destinationName, plan }, index) => (
-                  <div key={`${destinationName}-${index}`}>
+                {itineraries.map(({ destinationName, plan }, itineraryIndex) => (
+                  <div key={`${destinationName}-${itineraryIndex}`}>
                     <h3 className="text-3xl font-bold text-center text-gray-800 dark:text-gray-100 mb-6 border-b-2 border-indigo-500 pb-2">
                       Itinerario per {destinationName}
                     </h3>
                     <div className="space-y-8">
-                      {plan.map((dayPlan) => (
-                        <ItineraryCard key={`${destinationName}-${index}-${dayPlan.day}`} dayPlan={dayPlan} />
+                      {plan.map((dayPlan, dayIndex) => (
+                        <ItineraryCard 
+                          key={`${destinationName}-${itineraryIndex}-${dayPlan.day}`} 
+                          dayPlan={dayPlan}
+                          onActivityOptionsClick={(activity) => handleOpenReplacementModal(itineraryIndex, dayIndex, activity)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -398,6 +466,19 @@ const handleShare = async () => {
       </main>
       <Footer />
     </div>
+    
+    {replacementState && (
+        <ReplacementModal
+            isOpen={!!replacementState}
+            onClose={handleCloseReplacementModal}
+            activityToReplace={replacementState.activity}
+            alternatives={alternativeSuggestions}
+            isLoading={isLoadingAlternatives}
+            onConfirmRemove={handleConfirmRemove}
+            onConfirmReplace={handleConfirmReplace}
+        />
+    )}
+    </>
   );
 };
 
