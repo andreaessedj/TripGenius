@@ -69,6 +69,14 @@ export interface PackingItem {
 }
 
 /**
- * Represents the packing list, categorized.
+ * Represents a category of packing items.
  */
-export type PackingList = Record<string, PackingItem[]>;
+export interface PackingCategory {
+  category: string;
+  items: PackingItem[];
+}
+
+/**
+ * Represents the packing list, which is an array of categories.
+ */
+export type PackingList = PackingCategory[];

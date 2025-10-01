@@ -69,19 +69,24 @@ const experiencesSchema = {
 };
 
 const packingListSchema = {
-  type: Type.OBJECT,
-  description: "Un oggetto dove ogni chiave è una categoria di item (es. 'Abbigliamento', 'Documenti') e il valore è un array di oggetti item.",
-  properties: {},
-  additionalProperties: {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        item: { type: Type.STRING, description: "Il nome dell'oggetto da mettere in valigia." },
-        notes: { type: Type.STRING, description: "Una nota breve e facoltativa (es. 'Impermeabile')." }
-      },
-      required: ["item"]
-    }
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      category: { type: Type.STRING, description: "Il nome della categoria (es. 'Abbigliamento', 'Documenti')." },
+      items: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            item: { type: Type.STRING, description: "Il nome dell'oggetto da mettere in valigia." },
+            notes: { type: Type.STRING, description: "Una nota breve e facoltativa (es. 'Impermeabile')." }
+          },
+          required: ["item"]
+        }
+      }
+    },
+    required: ['category', 'items']
   }
 };
 
@@ -151,8 +156,13 @@ export const generateItinerary = async (destination: string, days: number, inten
       Regole di personalizzazione:
       - Intensità: 'leggero' (poche attività, rilassato), 'medio' (equilibrio), 'intenso' (serrato).
       - Budget: 'economico' (privilegia attività gratuite, street food), 'medio' (mix di attività a pagamento e gratuite), 'lusso' (esperienze premium, ristoranti rinomati).
-      - Interessi: Adatta le attività agli interessi forniti. Se l'interesse è 'Cibo', includi più esperienze culinarie. Se è 'Arte', più musei.
+      - Interessi: Adatta le attività agli interessi forniti. Se l'interesse è 'Cibo', includi più esperienze culinarie.
       
+      **Regola FONDAMENTALE per i Ristoranti**: Quando suggerisci un ristorante specifico con categoria 'Ristorante', DEVI basarti su informazioni verificate e recenti per assicurarti che sia attualmente aperto e operativo. Se non sei sicuro al 100% o non trovi un locale specifico adatto, NON inventare un nome. Invece, crea un'attività generica ma evocativa. Esempi:
+      - Per il pranzo, usa 'name': "Pausa Pranzo Tipica", 'description': "Goditi un pranzo rilassante in un'osteria o trattoria locale a tua scelta per assaporare i sapori autentici della regione."
+      - Per la cena, usa 'name': "Cena con Atmosfera", 'description': "Scegli un ristorante che ti ispira nella zona per una cena memorabile, magari con una vista particolare o un'atmosfera unica."
+      Per queste attività generiche, imposta 'address' con il nome del quartiere (es. "Quartiere Trastevere") e non includere 'latitude' e 'longitude'.
+
       Per ogni giorno, fornisci:
       1. 'title': Un titolo accattivante.
       2. 'weatherAdvice': Un breve consiglio sul meteo (es. "Porta un ombrello per possibili acquazzoni pomeridiani").
@@ -198,6 +208,9 @@ export const generateAlternativeActivities = async (destination: string, activit
         Gli interessi del viaggiatore sono: ${context.interests.join(', ')}.
         Il budget è '${context.budget}'.
         Le alternative devono essere pertinenti e nelle vicinanze, se possibile.
+
+        **Regola FONDAMENTALE per i Ristoranti**: Se l'attività da rimpiazzare è un 'Ristorante', quando suggerisci un ristorante specifico DEVI basarti su informazioni verificate e recenti. Se non sei sicuro, fornisci un suggerimento generico (es. 'name': "Ristorante Alternativo", 'description': "Un altro ottimo ristorante in zona a tua scelta, per provare sapori diversi."). In questo caso, imposta 'address' con il nome del quartiere e non includere 'latitude' e 'longitude'.
+
         Per ogni alternativa, fornisci tutti i dettagli necessari: 'timeOfDay', 'name', 'description', 'address', 'category', 'estimatedVisitDuration', 'latitude', 'longitude', 'estimatedCost' e 'ticketLink' (se applicabile, usando il formato partner GetYourGuide 'partner_id=VHSL1EX').
         Rispondi solo con un array JSON di 3 oggetti attività. Non includere 'travelToNext'.
     `;
@@ -256,9 +269,9 @@ export const generatePackingList = async (destination: string, duration: number,
       Crea una lista di cose da mettere in valigia (packing list) per un viaggio di ${duration} giorni a ${destination}.
       Considera che le attività pianificate includono: ${activitiesSummary}.
       Basa i suggerimenti sull'abbigliamento sul clima tipico della destinazione.
-      Organizza la lista in categorie logiche come 'Abbigliamento', 'Documenti', 'Elettronica', 'Articoli da toeletta', e 'Extra'.
-      Per ogni oggetto, fornisci l'item e una nota opzionale se necessaria.
-      Rispondi solo con l'oggetto JSON, senza testo introduttivo, conclusivo o markdown.
+      Organizza la lista in un array di categorie. Ogni oggetto nell'array deve avere una chiave "category" (es. 'Abbigliamento') e una chiave "items" che è un array di oggetti. Ogni oggetto item deve avere una chiave "item" e una chiave opzionale "notes".
+      Le categorie dovrebbero essere logiche, come 'Abbigliamento', 'Documenti', 'Elettronica', 'Articoli da toeletta', e 'Extra'.
+      Rispondi solo con l'array JSON, senza testo introduttivo, conclusivo o markdown.
     `;
 
     try {
