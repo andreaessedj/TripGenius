@@ -1,7 +1,21 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { ItineraryPlan, LocalExperiences, Activity, DayPlan, PackingList } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+export const startChat = (): Chat => {
+    const model = 'gemini-2.5-flash';
+    const systemInstruction = `Sei un assistente di viaggio amichevole e colloquiale. Il tuo obiettivo è aiutare l'utente a pianificare un viaggio. Poni domande per raccogliere le seguenti informazioni: una o più destinazioni con il relativo numero di giorni per ciascuna, una data di inizio, un budget ('economico', 'medio', 'lusso'), un'intensità del viaggio ('leggero', 'medio', 'intenso') e gli interessi specifici dell'utente (come 'Arte', 'Cibo', 'Natura'). Sii proattivo e fai una domanda alla volta. Quando l'utente ti chiede di generare l'itinerario o ti fornisce un prompt per riassumere i dati, DEVI rispondere SOLO con il codice JSON richiesto, senza testo aggiuntivo, spiegazioni o markdown.`;
+
+    const chatSession: Chat = ai.chats.create({
+        model: model,
+        config: {
+            systemInstruction: systemInstruction
+        }
+    });
+    return chatSession;
+}
+
 
 const activitySchemaProperties = {
   timeOfDay: { type: Type.STRING, enum: ['Mattina', 'Pomeriggio', 'Sera'] },
